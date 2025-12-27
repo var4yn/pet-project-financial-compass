@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { analyticsApi } from '@/api/analytics'
-import { format, subDays, startOfMonth } from 'date-fns'
+import { format, startOfMonth } from 'date-fns'
 
 export function useAnalyticsReport(dateFrom?: string, dateTo?: string) {
   const today = new Date()
