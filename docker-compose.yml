@@ -1,0 +1,217 @@
+services:
+  # ============================================
+  # DATABASES - отдельная БД для каждого сервиса
+  # ============================================
+
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: fc-postgres-auth
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fc-network
+
+  postgres-transactions:
+    image: postgres:16-alpine
+    container_name: fc-postgres-transactions
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: transactions_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_transactions_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d transactions_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fc-network
+
+  postgres-analytics:
+    image: postgres:16-alpine
+    container_name: fc-postgres-analytics
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: analytics_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_analytics_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d analytics_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fc-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: fc-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fc-network
+
+  # ============================================
+  # MICROSERVICES
+  # ============================================
+
+  auth-service:
+    build:
+      context: ./auth_service
+      dockerfile: Dockerfile
+    container_name: fc-auth-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres-auth:5432/auth_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-super-secret-key-change-in-production}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      REFRESH_TOKEN_EXPIRE_DAYS: "7"
+    volumes:
+      - ./auth_service/src:/app/src
+      - ./auth_service/alembic:/app/alembic
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  transactions-service:
+    build:
+      context: ./transactions_service
+      dockerfile: Dockerfile
+    container_name: fc-transactions-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres-transactions:5432/transactions_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/1
+      AUTH_SERVICE_URL: http://auth-service:8000
+    volumes:
+      - ./transactions_service/src:/app/src
+      - ./transactions_service/alembic:/app/alembic
+    depends_on:
+      postgres-transactions:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - fc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  analytics-service:
+    build:
+      context: ./analytics_service
+      dockerfile: Dockerfile
+    container_name: fc-analytics-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres-analytics:5432/analytics_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/2
+      TRANSACTIONS_SERVICE_URL: http://transactions-service:8000
+      AUTH_SERVICE_URL: http://auth-service:8000
+    volumes:
+      - ./analytics_service/src:/app/src
+      - ./analytics_service/alembic:/app/alembic
+    depends_on:
+      postgres-analytics:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      transactions-service:
+        condition: service_healthy
+    networks:
+      - fc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: fc-gateway
+    restart: unless-stopped
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      TRANSACTIONS_SERVICE_URL: http://transactions-service:8000
+      ANALYTICS_SERVICE_URL: http://analytics-service:8000
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/3
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      transactions-service:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+    networks:
+      - fc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: fc-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - fc-network
+
+volumes:
+  postgres_auth_data:
+  postgres_transactions_data:
+  postgres_analytics_data:
+  redis_data:
+
+networks:
+  fc-network:
+    driver: bridge
