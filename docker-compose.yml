@@ -191,6 +191,22 @@ services:
       timeout: 10s
       retries: 3
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fc-frontend
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    networks:
+      - fc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   nginx:
     build:
       context: ./nginx
@@ -201,8 +217,8 @@ services:
       - "80:80"
       - "443:443"
     depends_on:
-      gateway:
-        condition: service_healthy
+      - frontend
+      - gateway
     networks:
       - fc-network
 
