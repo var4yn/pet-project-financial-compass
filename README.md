@@ -14,12 +14,6 @@ cd ..
 
 docker compose build
 
-docker compose run --rm auth-service uv run alembic revision --autogenerate -m "init auth"
-
-docker compose run --rm transactions-service uv run alembic revision --autogenerate -m "init transactions"
-
-docker compose run --rm analytics-service uv run alembic revision --autogenerate -m "init analytics"
-
 docker compose up
 
 # проверить API
