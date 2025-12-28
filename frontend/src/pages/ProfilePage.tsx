@@ -46,7 +46,8 @@ export function ProfilePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {user.is_verified && (
+           <div className="flex items-center gap-3">
             <Shield className="h-5 w-5 text-gray-400" />
             <div>
               <p className="text-sm text-gray-500">Статус</p>
@@ -58,7 +59,8 @@ export function ProfilePage() {
                 )}
               </p>
             </div>
-          </div>
+          </div>)}
+
         </div>
 
         <div className="mt-6 border-t border-gray-100 pt-6">

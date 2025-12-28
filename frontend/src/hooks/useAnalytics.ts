@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { analyticsApi } from '@/api/analytics'
-import { format, startOfMonth } from 'date-fns'
+import { format, subMonths, startOfMonth } from 'date-fns'
 
 export function useAnalyticsReport(dateFrom?: string, dateTo?: string) {
   const today = new Date()
-  const defaultFrom = format(startOfMonth(today), 'yyyy-MM-dd')
+  
+  // По умолчанию: последние 12 месяцев
+  const defaultFrom = format(startOfMonth(subMonths(today, 11)), 'yyyy-MM-dd')
   const defaultTo = format(today, 'yyyy-MM-dd')
 
   return useQuery({
