@@ -1,6 +1,11 @@
+from datetime import date
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from transactions_service.api.deps import CurrentUserId, DBSession
+from transactions_service.models.transaction import TransactionType
 from transactions_service.schemas.transaction import (
     CategoryCreate,
     CategoryResponse,
@@ -25,9 +30,19 @@ async def get_transactions(
     user_id: CurrentUserId,
     session: DBSession,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
-    filters: TransactionFilter = Depends(),
+    size: int = Query(20, ge=1, le=1000),
+    
+    type: TransactionType | None = Query(None, description="Фильтр по типу"),
+    category_id: str | None = Query(None, description="Фильтр по категории"),
+    date_from: date | None = Query(None, description="Дата от"),
+    date_to: date | None = Query(None, description="Дата до"),
 ):
+    filters = TransactionFilter(
+        type=type,
+        category_id=category_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
     return await TransactionService(session).get_transactions(user_id, filters, page, size)
 
 
