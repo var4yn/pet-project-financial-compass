@@ -25,6 +25,9 @@ docker compose up
 # проверить API
 curl http://localhost/api/health
 
+
+# Документация
+http://localhost/docs
 ```
 
 
